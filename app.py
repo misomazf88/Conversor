@@ -11,9 +11,10 @@ from flask_restful import Resource
 from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
 from flask_sqlalchemy import SQLAlchemy
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
-import subprocess
+from multiprocessing import Pool, cpu_count
+from pydub import AudioSegment
 
-UPLOAD_FOLDER = os.getcwd() + "/uploads/"
+UPLOAD_FOLDER = os.getcwd()
 
 db = SQLAlchemy()
 
@@ -50,6 +51,12 @@ class TaskSchema(SQLAlchemyAutoSchema):
         model = Task
         include_relationships = True
         load_instance = True
+
+class Audio():
+    def __init__(self, audios_dir: str, input_format: str, output_format: str):
+        self.audios_dir = audios_dir
+        self.input_format = input_format
+        self.output_format = output_format
 
 task_schema = TaskSchema()
 
@@ -195,15 +202,16 @@ class CronjobView(Resource):
                 print("TaskId: " + str(task.id))
                 print("Filename: "+ task.fileName)
                 print("NewFormat: "+ task.newFormat)
-            
-                file_name = task.fileName.split(".")[0]
-                new_file = file_name + "." + task.newFormat
+
+                output = AudioSegment.from_file(UPLOAD_FOLDER, format=task.fileName)
+                output.export(UPLOAD_FOLDER.replace(task.fileName.split(".")[1],
+                      f'{self.output_format}'), format=task.newFormat)
 
                 print("Email" + task.user[0].email)
                 receiver = task.user[0].email
 
                 emailMessage = self.email_template_convertion_success(task)
-                subprocess.call(['ffmpeg', '-y', '-i', UPLOAD_FOLDER + task.fileName, UPLOAD_FOLDER + new_file], shell=True)
+                
                 task.status = "processed"
                 print(task.status)
                 db.session.commit()
@@ -214,7 +222,8 @@ class CronjobView(Resource):
 
 def create_app(config_name):
     app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@127.0.0.1:5432/postgres'
+    #app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@127.0.0.1:5432/postgres'
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tutorial_canciones.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY']='frase-secreta'
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600
