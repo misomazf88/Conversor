@@ -13,6 +13,7 @@ from flask_sqlalchemy import SQLAlchemy
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from multiprocessing import Pool, cpu_count
 from pydub import AudioSegment
+import sys
 
 UPLOAD_FOLDER = os.getcwd()
 
@@ -203,9 +204,7 @@ class CronjobView(Resource):
                 print("Filename: "+ task.fileName)
                 print("NewFormat: "+ task.newFormat)
 
-                output = AudioSegment.from_file(UPLOAD_FOLDER, format=task.fileName)
-                output.export(UPLOAD_FOLDER.replace(task.fileName.split(".")[1],
-                      f'{self.output_format}'), format=task.newFormat)
+                self.convert_files_parallel(task)
 
                 print("Email" + task.user[0].email)
                 receiver = task.user[0].email
@@ -219,6 +218,31 @@ class CronjobView(Resource):
 
                 print("=====================================================")
         return 'Running....', 200
+
+    def convert_files_parallel(self, task) -> None:
+        """Iterates over every file in the dir with the input_format and
+        converts it to the output_format in a parallel way
+        """
+        file_paths = []
+        for file in os.listdir(UPLOAD_FOLDER):
+            if file.endswith(task.fileName.split(".")[1]):
+                file_paths.append(os.path.join(
+                    UPLOAD_FOLDER, file))
+        with Pool(cpu_count()) as p:
+            p.map(self.convert_file, file_paths, task)
+
+    def convert_file(self, file_path: str, task) -> None:
+        """Converts the current audio to a new output format
+
+        Args:
+            file_path (str): path of the file to be converted
+        """
+        print(
+            f"Converting {os.path.split(file_path)[1]} to {task.newFormat}")
+
+        output = AudioSegment.from_file(file_path, format=task.newFormat)
+        output.export(file_path.replace(task.fileName.split(".")[1],
+                      f'{task.newFormat}'), format=task.newFormat)
 
 def create_app(config_name):
     app = Flask(__name__)
